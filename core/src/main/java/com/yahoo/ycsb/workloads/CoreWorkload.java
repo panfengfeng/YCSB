@@ -640,7 +640,7 @@ public class CoreWorkload extends Workload {
       break;
     default:
       doTransactionReadModifyWrite(db);
-    } 
+    }
 
     return true;
   }

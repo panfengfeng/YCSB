@@ -264,10 +264,15 @@ public class MongoDbClient extends DB {
           // this is effectively an insert, but using an upsert instead due
           // to current inability of the framework to clean up after itself
           // between test runs.
+          //System.out.println("collection.replaceOne");
           collection.replaceOne(new Document("_id", toInsert.get("_id")),
               toInsert, UPDATE_WITH_UPSERT);
         } else {
+          //System.out.println("collection.insertOne@panda");
+	  //long startTime = System.nanoTime();
           collection.insertOne(toInsert);
+	  //long consumingTime = System.nanoTime() - startTime;
+	  //System.out.println("collection.insertOne@panda timeuse(ns) " + consumingTime);
         }
       } else {
         bulkInserts.add(toInsert);
@@ -280,8 +285,10 @@ public class MongoDbClient extends DB {
                   new Document("_id", doc.get("_id")),
                   doc, UPDATE_WITH_UPSERT));
             }
+            //System.out.println("collection.bulkWrite");
             collection.bulkWrite(updates);
           } else {
+            //System.out.println("collection.insertMany");
             collection.insertMany(bulkInserts, INSERT_UNORDERED);
           }
           bulkInserts.clear();
@@ -320,7 +327,10 @@ public class MongoDbClient extends DB {
       MongoCollection<Document> collection = database.getCollection(table);
       Document query = new Document("_id", key);
 
+      //long startTime = System.nanoTime();
       FindIterable<Document> findIterable = collection.find(query);
+      //long consumingTime = System.nanoTime() - startTime;
+      //System.out.println("collection.find timeuse(ns) " + consumingTime);
 
       if (fields != null) {
         Document projection = new Document();

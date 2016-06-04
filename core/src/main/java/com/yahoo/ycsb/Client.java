@@ -454,11 +454,13 @@ class ClientThread implements Runnable
 
         while (((_opcount == 0) || (_opsdone < _opcount)) && !_workload.isStopRequested())
         {
-
+	  long startTime = System.nanoTime();
           if (!_workload.doTransaction(_db,_workloadstate))
           {
             break;
           }
+	  long consumeTime = System.nanoTime() - startTime;
+	  System.out.println("client doTransaction@panda timeuse(ns) " + consumeTime);
 
           _opsdone++;
 
@@ -471,11 +473,13 @@ class ClientThread implements Runnable
 
         while (((_opcount == 0) || (_opsdone < _opcount)) && !_workload.isStopRequested())
         {
-
+	  long startTime = System.nanoTime();
           if (!_workload.doInsert(_db,_workloadstate))
           {
             break;
           }
+	  long consumeTime = System.nanoTime() - startTime;
+	  System.out.println("client doInsert@panda timeuse(ns) " + consumeTime);
 
           _opsdone++;
 
