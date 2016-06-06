@@ -537,19 +537,46 @@ public class CoreWorkload extends Workload {
     return value;
   }
 
+  private HashMap<String, String> buildSingleStringValue(String key) {
+    HashMap<String, String> value = new HashMap<String, String>();
+
+    String fieldkey = fieldnames.get(fieldchooser.nextValue().intValue());
+    String data = buildDeterministicValue(key, fieldkey);
+    value.put(fieldkey, data);
+
+    return value;
+  }
+
+
   /**
    * Builds values for all fields.
    */
+
+  private HashMap<String, String> buildStringValues(String key) {
+    //System.out.println("buildValues key " + key);
+    HashMap<String, String> values = new HashMap<String, String>();
+
+    for (String fieldkey : fieldnames) {
+      String data = buildDeterministicValue(key, fieldkey);
+      values.put(fieldkey, data);
+    }
+    return values;
+  }
+
   private HashMap<String, ByteIterator> buildValues(String key) {
+    //System.out.println("buildValues key " + key);
     HashMap<String, ByteIterator> values = new HashMap<String, ByteIterator>();
 
     for (String fieldkey : fieldnames) {
+      //System.out.println("buildValues fieldkey " + fieldkey);
       ByteIterator data;
       if (dataintegrity) {
         data = new StringByteIterator(buildDeterministicValue(key, fieldkey));
+        //System.out.println("buildValues dataintegrity data  " + data.toString());
       } else {
         // fill with random data
         data = new RandomByteIterator(fieldlengthgenerator.nextValue().longValue());
+        //System.out.println("buildValues not dataintegrity data  " + data);
       }
       values.put(fieldkey, data);
     }
@@ -582,6 +609,7 @@ public class CoreWorkload extends Workload {
    */
   @Override
   public boolean doInsert(DB db, Object threadstate) {
+    //System.out.println("ycsb core doInsert");
     int keynum = keysequence.nextValue().intValue();
     String dbkey = buildKeyName(keynum);
     HashMap<String, ByteIterator> values = buildValues(dbkey);
@@ -590,6 +618,43 @@ public class CoreWorkload extends Workload {
     int numOfRetries = 0;
     do {
       status = db.insert(table, dbkey, values);
+      if (status == Status.OK) {
+        break;
+      }
+      // Retry if configured. Without retrying, the load process will fail
+      // even if one single insertion fails. User can optionally configure
+      // an insertion retry limit (default is 0) to enable retry.
+      if (++numOfRetries <= insertionRetryLimit) {
+        System.err.println("Retrying insertion, retry count: " + numOfRetries);
+        try {
+          // Sleep for a random number between [0.8, 1.2)*insertionRetryInterval.
+          int sleepTime = (int) (1000 * insertionRetryInterval * (0.8 + 0.4 * Math.random()));
+          Thread.sleep(sleepTime);
+        } catch (InterruptedException e) {
+          break;
+        }
+
+      } else {
+        System.err.println("Error inserting, not retrying any more. number of attempts: " + numOfRetries +
+            "Insertion Retry Limit: " + insertionRetryLimit);
+        break;
+
+      }
+    } while (true);
+
+    return (status == Status.OK);
+  }
+
+  @Override
+  public boolean doInsertString(DB db, Object threadstate) {
+    int keynum = keysequence.nextValue().intValue();
+    String dbkey = buildKeyName(keynum);
+    HashMap<String, String> values = buildStringValues(dbkey);
+
+    Status status;
+    int numOfRetries = 0;
+    do {
+      status = db.insertstringvalue(table, dbkey, values);
       if (status == Status.OK) {
         break;
       }
@@ -645,6 +710,30 @@ public class CoreWorkload extends Workload {
     return true;
   }
 
+  @Override
+  public boolean doTransactionString(DB db, Object threadstate) {
+    switch (operationchooser.nextString()) {
+    case "READ":
+      doTransactionReadString(db);
+      break;
+    case "UPDATE":
+      doTransactionUpdateString(db);
+      break;
+    case "INSERT":
+      doTransactionInsertString(db);
+      break;
+    case "SCAN":
+      doTransactionScanString(db);
+      break;
+    default:
+      doTransactionReadModifyWriteString(db);
+    }
+
+    return true;
+  }
+
+
+
   /**
    * Results are reported in the first three buckets of the histogram under
    * the label "VERIFY".
@@ -670,6 +759,26 @@ public class CoreWorkload extends Workload {
     _measurements.measure("VERIFY", (int) (endTime - startTime) / 1000);
     _measurements.reportStatus("VERIFY", verifyStatus);
   }
+
+ protected void verifyRowString(String key, HashMap<String, String> cells) {
+    Status verifyStatus = Status.OK;
+    long startTime = System.nanoTime();
+    if (!cells.isEmpty()) {
+      for (Map.Entry<String, String> entry : cells.entrySet()) {
+        if (!entry.getValue().equals(buildDeterministicValue(key, entry.getKey()))) {
+          verifyStatus = Status.UNEXPECTED_STATE;
+          break;
+        }
+      }
+    } else {
+      // This assumes that null data is never valid
+      verifyStatus = Status.ERROR;
+    }
+    long endTime = System.nanoTime();
+    _measurements.measure("VERIFY", (int) (endTime - startTime) / 1000);
+    _measurements.reportStatus("VERIFY", verifyStatus);
+  }
+
 
   int nextKeynum() {
     int keynum;
@@ -711,7 +820,35 @@ public class CoreWorkload extends Workload {
       verifyRow(keyname, cells);
     }
   }
-  
+ 
+   public void doTransactionReadString(DB db) {
+    // choose a random key
+    int keynum = nextKeynum();
+
+    String keyname = buildKeyName(keynum);
+
+    HashSet<String> fields = null;
+
+    if (!readallfields) {
+      // read a random field
+      String fieldname = fieldnames.get(fieldchooser.nextValue().intValue());
+
+      fields = new HashSet<String>();
+      fields.add(fieldname);
+    } else if (dataintegrity) {
+      // pass the full field list if dataintegrity is on for verification
+      fields = new HashSet<String>(fieldnames);
+    }
+
+    HashMap<String, String> cells = new HashMap<String, String>();
+    db.readstringvalue(table, keyname, fields, cells);
+
+    if (dataintegrity) {
+      verifyRowString(keyname, cells);
+    }
+  }
+
+ 
   public void doTransactionReadModifyWrite(DB db) {
     // choose a random key
     int keynum = nextKeynum();
@@ -759,6 +896,54 @@ public class CoreWorkload extends Workload {
     _measurements.measureIntended("READ-MODIFY-WRITE", (int) ((en - ist) / 1000));
   }
 
+  public void doTransactionReadModifyWriteString(DB db) {
+    // choose a random key
+    int keynum = nextKeynum();
+
+    String keyname = buildKeyName(keynum);
+
+    HashSet<String> fields = null;
+
+    if (!readallfields) {
+      // read a random field
+      String fieldname = fieldnames.get(fieldchooser.nextValue().intValue());
+
+      fields = new HashSet<String>();
+      fields.add(fieldname);
+    }
+
+    HashMap<String, String> values;
+
+    if (writeallfields) {
+      // new data for all the fields
+      values = buildStringValues(keyname);
+    } else {
+      // update a random field
+      values = buildSingleStringValue(keyname);
+    }
+
+    // do the transaction
+
+    HashMap<String, String> cells = new HashMap<String, String>();
+
+
+    long ist = _measurements.getIntendedtartTimeNs();
+    long st = System.nanoTime();
+    db.readstringvalue(table, keyname, fields, cells);
+
+    db.updatestringvalue(table, keyname, values);
+
+    long en = System.nanoTime();
+
+    if (dataintegrity) {
+      verifyRowString(keyname, cells);
+    }
+
+    _measurements.measure("READ-MODIFY-WRITE", (int) ((en - st) / 1000));
+    _measurements.measureIntended("READ-MODIFY-WRITE", (int) ((en - ist) / 1000));
+  }
+
+
   public void doTransactionScan(DB db) {
     // choose a random key
     int keynum = nextKeynum();
@@ -781,6 +966,29 @@ public class CoreWorkload extends Workload {
     db.scan(table, startkeyname, len, fields, new Vector<HashMap<String, ByteIterator>>());
   }
 
+  public void doTransactionScanString(DB db) {
+	  // choose a random key
+    int keynum = nextKeynum();
+
+    String startkeyname = buildKeyName(keynum);
+
+    // choose a random scan length
+    int len = scanlength.nextValue().intValue();
+
+    HashSet<String> fields = null;
+
+    if (!readallfields) {
+      // read a random field
+      String fieldname = fieldnames.get(fieldchooser.nextValue().intValue());
+
+      fields = new HashSet<String>();
+      fields.add(fieldname);
+    }
+
+    db.scanstringvalue(table, startkeyname, len, fields, new Vector<HashMap<String, String>>());
+
+  }
+
   public void doTransactionUpdate(DB db) {
     // choose a random key
     int keynum = nextKeynum();
@@ -800,8 +1008,29 @@ public class CoreWorkload extends Workload {
     db.update(table, keyname, values);
   }
 
+  public void doTransactionUpdateString(DB db) {
+    // choose a random key
+    int keynum = nextKeynum();
+
+    String keyname = buildKeyName(keynum);
+
+    HashMap<String, String> values;
+
+    if (writeallfields) {
+      // new data for all the fields
+      values = buildStringValues(keyname);
+    } else {
+      // update a random field
+      values = buildSingleStringValue(keyname);
+    }
+
+    db.updatestringvalue(table, keyname, values);
+  }
+
+
   public void doTransactionInsert(DB db) {
     // choose the next key
+    //System.out.println("ycsb core doTransactionInsert");
     int keynum = transactioninsertkeysequence.nextValue();
 
     try {
@@ -813,6 +1042,22 @@ public class CoreWorkload extends Workload {
       transactioninsertkeysequence.acknowledge(keynum);
     }
   }
+
+  public void doTransactionInsertString(DB db) {
+    // choose the next key
+    //System.out.println("ycsb core doTransactionInsert");
+    int keynum = transactioninsertkeysequence.nextValue();
+
+    try {
+      String dbkey = buildKeyName(keynum);
+
+      HashMap<String, String> values = buildStringValues(dbkey);
+      db.insertstringvalue(table, dbkey, values);
+    } finally {
+      transactioninsertkeysequence.acknowledge(keynum);
+    }
+  }
+
 
   /**
    * Creates a weighted discrete values with database operations for a workload to perform.

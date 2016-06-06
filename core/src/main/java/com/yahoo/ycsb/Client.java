@@ -455,7 +455,8 @@ class ClientThread implements Runnable
         while (((_opcount == 0) || (_opsdone < _opcount)) && !_workload.isStopRequested())
         {
 	  long startTime = System.nanoTime();
-          if (!_workload.doTransaction(_db,_workloadstate))
+          //if (!_workload.doTransaction(_db,_workloadstate))
+          if (!_workload.doTransactionString(_db,_workloadstate))
           {
             break;
           }
@@ -474,7 +475,8 @@ class ClientThread implements Runnable
         while (((_opcount == 0) || (_opsdone < _opcount)) && !_workload.isStopRequested())
         {
 	  long startTime = System.nanoTime();
-          if (!_workload.doInsert(_db,_workloadstate))
+          // if (!_workload.doInsert(_db,_workloadstate))
+          if (!_workload.doInsertString(_db,_workloadstate))
           {
             break;
           }

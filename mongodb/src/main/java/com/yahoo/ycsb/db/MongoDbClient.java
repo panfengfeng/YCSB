@@ -306,6 +306,65 @@ public class MongoDbClient extends DB {
 
   }
 
+  @Override
+  public Status insertstringvalue(String table, String key,
+      HashMap<String, String> values) {
+    try {
+      MongoCollection<Document> collection = database.getCollection(table);
+      Document toInsert = new Document("_id", key);
+      for (Map.Entry<String, String> entry : values.entrySet()) {
+        toInsert.put(entry.getKey(), entry.getValue());
+      }
+
+      if (batchSize == 1) {
+        if (useUpsert) {
+          // this is effectively an insert, but using an upsert instead due
+          // to current inability of the framework to clean up after itself
+          // between test runs.
+          //System.out.println("collection.replaceOne");
+          collection.replaceOne(new Document("_id", toInsert.get("_id")),
+              toInsert, UPDATE_WITH_UPSERT);
+        } else {
+          //System.out.println("collection.insertOne@panda");
+	  //long startTime = System.nanoTime();
+          collection.insertOne(toInsert);
+	  //long consumingTime = System.nanoTime() - startTime;
+	  //System.out.println("collection.insertOne@panda timeuse(ns) " + consumingTime);
+        }
+      } else {
+        bulkInserts.add(toInsert);
+        if (bulkInserts.size() == batchSize) {
+          if (useUpsert) {
+            List<UpdateOneModel<Document>> updates = 
+                new ArrayList<UpdateOneModel<Document>>(bulkInserts.size());
+            for (Document doc : bulkInserts) {
+              updates.add(new UpdateOneModel<Document>(
+                  new Document("_id", doc.get("_id")),
+                  doc, UPDATE_WITH_UPSERT));
+            }
+            //System.out.println("collection.bulkWrite");
+            collection.bulkWrite(updates);
+          } else {
+            //System.out.println("collection.insertMany");
+            collection.insertMany(bulkInserts, INSERT_UNORDERED);
+          }
+          bulkInserts.clear();
+        } else {
+          return OptionsSupport.BATCHED_OK;
+        }
+      }
+      return Status.OK;
+    } catch (Exception e) {
+      System.err.println("Exception while trying bulk insert with "
+          + bulkInserts.size());
+      e.printStackTrace();
+      return Status.ERROR;
+    }
+
+  }
+
+
+
   /**
    * Read a record from the database. Each field/value pair from the result will
    * be stored in a HashMap.
@@ -344,6 +403,38 @@ public class MongoDbClient extends DB {
 
       if (queryResult != null) {
         fillMap(result, queryResult);
+      }
+      return queryResult != null ? Status.OK : Status.NOT_FOUND;
+    } catch (Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+  }
+
+   @Override
+  public Status readstringvalue(String table, String key, Set<String> fields,
+      HashMap<String, String> result) {
+    try {
+      MongoCollection<Document> collection = database.getCollection(table);
+      Document query = new Document("_id", key);
+
+      //long startTime = System.nanoTime();
+      FindIterable<Document> findIterable = collection.find(query);
+      //long consumingTime = System.nanoTime() - startTime;
+      //System.out.println("collection.find timeuse(ns) " + consumingTime);
+
+      if (fields != null) {
+        Document projection = new Document();
+        for (String field : fields) {
+          projection.put(field, INCLUDE);
+        }
+        findIterable.projection(projection);
+      }
+
+      Document queryResult = findIterable.first();
+
+      if (queryResult != null) {
+        fillMapstringvalue(result, queryResult);
       }
       return queryResult != null ? Status.OK : Status.NOT_FOUND;
     } catch (Exception e) {
@@ -422,6 +513,60 @@ public class MongoDbClient extends DB {
     }
   }
 
+@Override
+  public Status scanstringvalue(String table, String startkey, int recordcount,
+      Set<String> fields, Vector<HashMap<String, String>> result) {
+    MongoCursor<Document> cursor = null;
+    try {
+      MongoCollection<Document> collection = database.getCollection(table);
+
+      Document scanRange = new Document("$gte", startkey);
+      Document query = new Document("_id", scanRange);
+      Document sort = new Document("_id", INCLUDE);
+
+      FindIterable<Document> findIterable =
+          collection.find(query).sort(sort).limit(recordcount);
+
+      if (fields != null) {
+        Document projection = new Document();
+        for (String fieldName : fields) {
+          projection.put(fieldName, INCLUDE);
+        }
+        findIterable.projection(projection);
+      }
+
+      cursor = findIterable.iterator();
+
+      if (!cursor.hasNext()) {
+        System.err.println("Nothing found in scan for key " + startkey);
+        return Status.ERROR;
+      }
+
+      result.ensureCapacity(recordcount);
+
+      while (cursor.hasNext()) {
+        HashMap<String, String> resultMap =
+            new HashMap<String, String>();
+
+        Document obj = cursor.next();
+        fillMapstringvalue(resultMap, obj);
+
+        result.add(resultMap);
+      }
+
+      return Status.OK;
+    } catch (Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    } finally {
+      if (cursor != null) {
+        cursor.close();
+      }
+    }
+  }
+
+
+
   /**
    * Update a record in the database. Any field/value pairs in the specified
    * values HashMap will be written into the record with the specified record
@@ -461,6 +606,32 @@ public class MongoDbClient extends DB {
     }
   }
 
+  @Override
+  public Status updatestringvalue(String table, String key,
+      HashMap<String, String> values) {
+    try {
+      MongoCollection<Document> collection = database.getCollection(table);
+
+      Document query = new Document("_id", key);
+      Document fieldsToSet = new Document();
+      for (Map.Entry<String, String> entry : values.entrySet()) {
+        fieldsToSet.put(entry.getKey(), entry.getValue());
+      }
+      Document update = new Document("$set", fieldsToSet);
+
+      UpdateResult result = collection.updateOne(query, update);
+      if (result.wasAcknowledged() && result.getMatchedCount() == 0) {
+        System.err.println("Nothing updated for key " + key);
+        return Status.NOT_FOUND;
+      }
+      return Status.OK;
+    } catch (Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+  }
+
+
   /**
    * Fills the map with the values from the DBObject.
    * 
@@ -477,4 +648,11 @@ public class MongoDbClient extends DB {
       }
     }
   }
+
+  protected void fillMapstringvalue(Map<String, String> resultMap, Document obj) {
+    for (Map.Entry<String, Object> entry : obj.entrySet()) {
+        resultMap.put(entry.getKey(), (String) entry.getValue());
+    }
+  }
+
 }

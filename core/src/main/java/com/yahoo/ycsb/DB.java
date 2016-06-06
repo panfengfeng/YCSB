@@ -92,6 +92,8 @@ public abstract class DB
 	 */
 	public abstract Status read(String table, String key, Set<String> fields, HashMap<String,ByteIterator> result);
 
+	public abstract Status readstringvalue(String table, String key, Set<String> fields, HashMap<String,String> result);
+
 	/**
 	 * Perform a range scan for a set of records in the database. Each field/value pair from the result will be stored in a HashMap.
 	 *
@@ -104,6 +106,8 @@ public abstract class DB
 	 */
 	public abstract Status scan(String table, String startkey, int recordcount, Set<String> fields, Vector<HashMap<String,ByteIterator>> result);
 	
+	public abstract Status scanstringvalue(String table, String startkey, int recordcount, Set<String> fields, Vector<HashMap<String,String>> result);
+	
 	/**
 	 * Update a record in the database. Any field/value pairs in the specified values HashMap will be written into the record with the specified
 	 * record key, overwriting any existing values with the same field name.
@@ -114,6 +118,8 @@ public abstract class DB
 	 * @return The result of the operation.
 	 */
 	public abstract Status update(String table, String key, HashMap<String,ByteIterator> values);
+	
+	public abstract Status updatestringvalue(String table, String key, HashMap<String,String> values);
 
 	/**
 	 * Insert a record in the database. Any field/value pairs in the specified values HashMap will be written into the record with the specified
@@ -125,6 +131,8 @@ public abstract class DB
 	 * @return The result of the operation.
 	 */
 	public abstract Status insert(String table, String key, HashMap<String,ByteIterator> values);
+	
+	public abstract Status insertstringvalue(String table, String key, HashMap<String, String> values);
 
 	/**
 	 * Delete a record from the database. 

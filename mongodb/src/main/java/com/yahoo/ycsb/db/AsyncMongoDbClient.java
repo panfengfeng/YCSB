@@ -34,6 +34,7 @@ import com.allanbank.mongodb.bson.ElementType;
 import com.allanbank.mongodb.bson.builder.BuilderFactory;
 import com.allanbank.mongodb.bson.builder.DocumentBuilder;
 import com.allanbank.mongodb.bson.element.BinaryElement;
+import com.allanbank.mongodb.bson.element.StringElement;
 import com.allanbank.mongodb.builder.BatchedWrite;
 import com.allanbank.mongodb.builder.BatchedWriteMode;
 import com.allanbank.mongodb.builder.Find;
@@ -313,6 +314,72 @@ public class AsyncMongoDbClient extends DB {
     }
   }
 
+  @Override
+  public final Status insertstringvalue(final String table, final String key,
+      final HashMap<String, String> values) {
+    try {
+      final MongoCollection collection = database.getCollection(table);
+      final DocumentBuilder toInsert =
+          DOCUMENT_BUILDER.get().reset().add("_id", key);
+      final Document query = toInsert.build();
+      for (final Map.Entry<String, String> entry : values.entrySet()) {
+        toInsert.add(entry.getKey(), entry.getValue());
+      }
+
+      // Do an upsert.
+      if (batchSize <= 1) {
+        long result;
+        if (useUpsert) {
+          result = collection.update(query, toInsert,
+              /* multi= */false, /* upsert= */true, writeConcern);
+        } else {
+          // Return is not stable pre-SERVER-4381. No exception is success.
+          collection.insert(writeConcern, toInsert);
+          result = 1;
+        }
+        return result == 1 ? Status.OK : Status.NOT_FOUND;
+      }
+
+      // Use a bulk insert.
+      try {
+        if (useUpsert) {
+          batchedWrite.update(query, toInsert, /* multi= */false, 
+              /* upsert= */true);
+        } else {
+          batchedWrite.insert(toInsert);
+        }
+        batchedWriteCount += 1;
+
+        if (batchedWriteCount < batchSize) {
+          return OptionsSupport.BATCHED_OK;
+        }
+
+        long count = collection.write(batchedWrite);
+        if (count == batchedWriteCount) {
+          batchedWrite.reset().mode(BatchedWriteMode.REORDERED);
+          batchedWriteCount = 0;
+          return Status.OK;
+        }
+
+        System.err.println("Number of inserted documents doesn't match the "
+            + "number sent, " + count + " inserted, sent " + batchedWriteCount);
+        batchedWrite.reset().mode(BatchedWriteMode.REORDERED);
+        batchedWriteCount = 0;
+        return Status.ERROR;
+      } catch (Exception e) {
+        System.err.println("Exception while trying bulk insert with "
+            + batchedWriteCount);
+        e.printStackTrace();
+        return Status.ERROR;
+      }
+    } catch (final Exception e) {
+      e.printStackTrace();
+      return Status.ERROR;
+    }
+  }
+
+
+
   /**
    * Read a record from the database. Each field/value pair from the result will
    * be stored in a HashMap.
@@ -366,8 +433,49 @@ public class AsyncMongoDbClient extends DB {
       System.err.println(e.toString());
       return Status.ERROR;
     }
-
   }
+
+ @Override
+  public final Status readstringvalue(final String table, final String key,
+      final Set<String> fields, final HashMap<String, String> result) {
+    try {
+      final MongoCollection collection = database.getCollection(table);
+      final DocumentBuilder query =
+          DOCUMENT_BUILDER.get().reset().add("_id", key);
+
+      Document queryResult = null;
+      if (fields != null) {
+        final DocumentBuilder fieldsToReturn = BuilderFactory.start();
+        final Iterator<String> iter = fields.iterator();
+        while (iter.hasNext()) {
+          fieldsToReturn.add(iter.next(), 1);
+        }
+
+        final Find.Builder fb = new Find.Builder(query);
+        fb.projection(fieldsToReturn);
+        fb.setLimit(1);
+        fb.setBatchSize(1);
+        fb.readPreference(readPreference);
+
+        final MongoIterator<Document> ci = collection.find(fb.build());
+        if (ci.hasNext()) {
+          queryResult = ci.next();
+          ci.close();
+        }
+      } else {
+        queryResult = collection.findOne(query);
+      }
+
+      if (queryResult != null) {
+        fillMapstringvalue(result, queryResult);
+      }
+      return queryResult != null ? Status.OK : Status.NOT_FOUND;
+    } catch (final Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+  }
+
 
   /**
    * Perform a range scan for a set of records in the database. Each field/value
@@ -434,6 +542,53 @@ public class AsyncMongoDbClient extends DB {
     }
   }
 
+  @Override
+  public final Status scanstringvalue(final String table, final String startkey,
+      final int recordcount, final Set<String> fields,
+      final Vector<HashMap<String, String>> result) {
+    try {
+      final MongoCollection collection = database.getCollection(table);
+
+      final Find.Builder find =
+          Find.builder().query(where("_id").greaterThanOrEqualTo(startkey))
+              .limit(recordcount).batchSize(recordcount).sort(Sort.asc("_id"))
+              .readPreference(readPreference);
+
+      if (fields != null) {
+        final DocumentBuilder fieldsDoc = BuilderFactory.start();
+        for (final String field : fields) {
+          fieldsDoc.add(field, INCLUDE);
+        }
+
+        find.projection(fieldsDoc);
+      }
+
+      result.ensureCapacity(recordcount);
+
+      final MongoIterator<Document> cursor = collection.find(find);
+      if (!cursor.hasNext()) {
+        System.err.println("Nothing found in scan for key " + startkey);
+        return Status.NOT_FOUND;
+      }
+      while (cursor.hasNext()) {
+        // toMap() returns a Map but result.add() expects a
+        // Map<String,String>. Hence, the suppress warnings.
+        final Document doc = cursor.next();
+        final HashMap<String, String> docAsMap =
+            new HashMap<String, String>();
+
+        fillMapstringvalue(docAsMap, doc);
+
+        result.add(docAsMap);
+      }
+
+      return Status.OK;
+    } catch (final Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+  }
+
   /**
    * Update a record in the database. Any field/value pairs in the specified
    * values HashMap will be written into the record with the specified record
@@ -469,6 +624,28 @@ public class AsyncMongoDbClient extends DB {
     }
   }
 
+  @Override
+  public final Status updatestringvalue(final String table, final String key,
+      final HashMap<String, String> values) {
+    try {
+      final MongoCollection collection = database.getCollection(table);
+      final DocumentBuilder query = BuilderFactory.start().add("_id", key);
+      final DocumentBuilder update = BuilderFactory.start();
+      final DocumentBuilder fieldsToSet = update.push("$set");
+
+      for (final Map.Entry<String, String> entry : values.entrySet()) {
+        fieldsToSet.add(entry.getKey(), entry.getValue());
+      }
+      final long res =
+          collection.update(query, update, false, false, writeConcern);
+      return res == 1 ? Status.OK : Status.NOT_FOUND;
+    } catch (final Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+  }
+
+
   /**
    * Fills the map with the ByteIterators from the document.
    * 
@@ -486,6 +663,17 @@ public class AsyncMongoDbClient extends DB {
       }
     }
   }
+
+ protected final void fillMapstringvalue(final HashMap<String, String> result,
+      final Document queryResult) {
+    for (final Element be : queryResult) {
+      if (be.getType() == ElementType.STRING) {
+        result.put(be.getName(), be.getValueAsString());
+      }
+    }
+  }
+
+
 
   /**
    * BinaryByteArrayIterator provides an adapter from a {@link BinaryElement} to

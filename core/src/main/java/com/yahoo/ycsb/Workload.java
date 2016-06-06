@@ -82,6 +82,8 @@ public abstract class Workload {
    * synchronized, since each thread has its own threadstate instance.
    */
   public abstract boolean doInsert(DB db, Object threadstate);
+  
+  public abstract boolean doInsertString(DB db, Object threadstate);
 
   /**
    * Do one transaction operation. Because it will be called concurrently from multiple client threads, this
@@ -95,6 +97,8 @@ public abstract class Workload {
    * traces from a file, return true when there are more to do, false when you are done.
    */
   public abstract boolean doTransaction(DB db, Object threadstate);
+  
+  public abstract boolean doTransactionString(DB db, Object threadstate);
 
   /**
    * Allows scheduling a request to stop the workload.
