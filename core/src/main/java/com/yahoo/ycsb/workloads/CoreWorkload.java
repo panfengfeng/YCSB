@@ -18,6 +18,12 @@
 package com.yahoo.ycsb.workloads;
 
 import java.util.Properties;
+import java.io.BufferedReader;  
+import java.io.FileInputStream;  
+import java.io.FileReader;  
+import java.io.IOException;  
+import java.io.InputStreamReader; 
+import java.io.FileNotFoundException;
 
 import com.yahoo.ycsb.*;
 import com.yahoo.ycsb.generator.AcknowledgedCounterGenerator;
@@ -182,17 +188,23 @@ public class CoreWorkload extends Workload {
    * data against the formation template to ensure data integrity.
    */
   public static final String DATA_INTEGRITY_PROPERTY = "dataintegrity";
+  
+  public static final String SOURCEFROMSELF_PROPERTY = "sourcefromself";
 
   /**
    * The default value for the dataintegrity property.
    */
   public static final String DATA_INTEGRITY_PROPERTY_DEFAULT = "false";
+  
+  public static final String SOURCEFROMSELF_PROPERTY_DEFAULT = "true";
 
   /**
    * Set to true if want to check correctness of reads. Must also
    * be set to true during loading phase to function.
    */
   private boolean dataintegrity;
+  
+  private boolean sourcefromself;
 
   /**
    * The name of the property for the proportion of transactions that are reads.
@@ -350,6 +362,9 @@ public class CoreWorkload extends Workload {
   int insertionRetryLimit;
   int insertionRetryInterval;
 
+  BufferedReader br = null;
+  public final String filepath = "/datainssd/publicdata/movies/movies.txt";
+
   private Measurements _measurements = Measurements.getMeasurements();
 
   protected static NumberGenerator getFieldLengthGenerator(Properties p) throws WorkloadException {
@@ -386,14 +401,33 @@ public class CoreWorkload extends Workload {
    */
   @Override
   public void init(Properties p) throws WorkloadException {
+    try { 
+    	br = new BufferedReader(new InputStreamReader(new FileInputStream(filepath)));
+    } catch(FileNotFoundException fnfe) { 
+	System.out.println("FileNotFound");
+    } 
+
     table = p.getProperty(TABLENAME_PROPERTY, TABLENAME_PROPERTY_DEFAULT);
 
     fieldcount =
         Integer.parseInt(p.getProperty(FIELD_COUNT_PROPERTY, FIELD_COUNT_PROPERTY_DEFAULT));
     fieldnames = new ArrayList<String>();
-    for (int i = 0; i < fieldcount; i++) {
-      fieldnames.add("field" + i);
+
+    if(sourcefromself) {
+    	for (int i = 0; i < fieldcount; i++) {
+      		fieldnames.add("field" + i);
+   	 }
+    } else {
+		fieldnames.add("product/productId");
+		fieldnames.add("review/userId");
+		fieldnames.add("review/profileName");
+		fieldnames.add("review/helpfulness");
+		fieldnames.add("review/score");
+		fieldnames.add("review/time");
+		fieldnames.add("review/summary");
+		fieldnames.add("review/text");
     }
+
     fieldlengthgenerator = CoreWorkload.getFieldLengthGenerator(p);
     
     recordcount =
@@ -428,6 +462,9 @@ public class CoreWorkload extends Workload {
 
     dataintegrity = Boolean.parseBoolean(
         p.getProperty(DATA_INTEGRITY_PROPERTY, DATA_INTEGRITY_PROPERTY_DEFAULT));
+
+    sourcefromself = Boolean.parseBoolean(
+        p.getProperty(SOURCEFROMSELF_PROPERTY, SOURCEFROMSELF_PROPERTY_DEFAULT));
     // Confirm that fieldlengthgenerator returns a constant if data
     // integrity check requested.
     if (dataintegrity && !(p.getProperty(
@@ -555,10 +592,27 @@ public class CoreWorkload extends Workload {
   private HashMap<String, String> buildStringValues(String key) {
     //System.out.println("buildValues key " + key);
     HashMap<String, String> values = new HashMap<String, String>();
-
-    for (String fieldkey : fieldnames) {
-      String data = buildDeterministicValue(key, fieldkey);
-      values.put(fieldkey, data);
+	
+    if (sourcefromself) {
+	    for (String fieldkey : fieldnames) {
+		    String data = buildDeterministicValue(key, fieldkey);
+		    values.put(fieldkey, data);
+	    }
+    } else {
+	    for (String fieldkey : fieldnames) {
+		    try {
+			    while(br.ready()) {
+				    String data = br.readLine();
+				    if(data.startsWith(fieldkey)) {
+					    values.put(fieldkey, data.substring(fieldkey.length()+2));
+					    // System.out.println("result " + fieldkey + " " + data.substring(fieldkey.length()+2));
+					    break;
+				    }
+			    }
+		    } catch (IOException e) {
+			System.out.println("read error");
+		    }
+	    }
     }
     return values;
   }
