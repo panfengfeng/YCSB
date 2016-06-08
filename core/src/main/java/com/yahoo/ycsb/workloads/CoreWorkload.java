@@ -363,7 +363,7 @@ public class CoreWorkload extends Workload {
   int insertionRetryInterval;
 
   BufferedReader br = null;
-  public final String filepath = "/datainssd/publicdata/movies/movies.txt";
+  public final String filepath = "/datainssd/publicdata/movies/movies_ycsb.txt";
 
   private Measurements _measurements = Measurements.getMeasurements();
 
@@ -418,14 +418,14 @@ public class CoreWorkload extends Workload {
       		fieldnames.add("field" + i);
    	 }
     } else {
-		fieldnames.add("product/productId");
-		fieldnames.add("review/userId");
-		fieldnames.add("review/profileName");
-		fieldnames.add("review/helpfulness");
-		fieldnames.add("review/score");
-		fieldnames.add("review/time");
-		fieldnames.add("review/summary");
-		fieldnames.add("review/text");
+		fieldnames.add("productproductId");
+		fieldnames.add("reviewuserId");
+		fieldnames.add("reviewprofileName");
+		fieldnames.add("reviewhelpfulness");
+		fieldnames.add("reviewscore");
+		fieldnames.add("reviewtime");
+		fieldnames.add("reviewsummary");
+		fieldnames.add("reviewtext");
     }
 
     fieldlengthgenerator = CoreWorkload.getFieldLengthGenerator(p);
