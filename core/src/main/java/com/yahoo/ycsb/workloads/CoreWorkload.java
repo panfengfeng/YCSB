@@ -877,6 +877,7 @@ public class CoreWorkload extends Workload {
  
    public void doTransactionReadString(DB db) {
     // choose a random key
+    Status s;
     int keynum = nextKeynum();
 
     String keyname = buildKeyName(keynum);
@@ -895,7 +896,12 @@ public class CoreWorkload extends Workload {
     }
 
     HashMap<String, String> cells = new HashMap<String, String>();
-    db.readstringvalue(table, keyname, fields, cells);
+    s = db.readstringvalue(table, keyname, fields, cells);
+    if (s == Status.OK) 
+	System.out.println("found@panda");
+
+    if (s == Status.NOT_FOUND)
+	System.out.println("not found@panda");
 
     if (dataintegrity) {
       verifyRowString(keyname, cells);
