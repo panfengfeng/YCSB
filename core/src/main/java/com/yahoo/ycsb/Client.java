@@ -461,7 +461,7 @@ class ClientThread implements Runnable
             break;
           }
 	  long consumeTime = System.nanoTime() - startTime;
-	  System.out.println("client doTransaction@panda timeuse(ns) " + consumeTime);
+	  // System.out.println("client doTransaction@panda timeuse(ns) " + consumeTime);
 
           _opsdone++;
 
@@ -481,7 +481,7 @@ class ClientThread implements Runnable
             break;
           }
 	  long consumeTime = System.nanoTime() - startTime;
-	  System.out.println("client doInsert@panda timeuse(ns) " + consumeTime);
+	  // System.out.println("client doInsert@panda timeuse(ns) " + consumeTime);
 
           _opsdone++;
 

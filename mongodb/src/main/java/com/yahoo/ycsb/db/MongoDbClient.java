@@ -24,6 +24,7 @@
  */
 package com.yahoo.ycsb.db;
 
+import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.ReadPreference;
@@ -104,12 +105,18 @@ public class MongoDbClient extends DB {
 
   /** The batch size to use for inserts. */
   private static int batchSize;
+  
+  private static int batchReadSize;
 
   /** If true then use updates with the upsert option for inserts. */
   private static boolean useUpsert;
 
   /** The bulk inserts pending for the thread. */
   private final List<Document> bulkInserts = new ArrayList<Document>();
+  
+  private final List<String> bulkReads = new ArrayList<String>();
+  private final BasicDBObject whereQuery = new BasicDBObject();
+  int keynums = 0;
 
   /**
    * Cleanup any state for this DB. Called once per DB instance; there is one DB
@@ -177,6 +184,8 @@ public class MongoDbClient extends DB {
 
       // Set insert batchsize, default 1 - to be YCSB-original equivalent
       batchSize = Integer.parseInt(props.getProperty("batchsize", "1"));
+      
+      batchReadSize = Integer.parseInt(props.getProperty("batchreadsize", "1"));
 
       // Set is inserts are done as upserts. Defaults to false.
       useUpsert = Boolean.parseBoolean(
@@ -385,26 +394,41 @@ public class MongoDbClient extends DB {
     try {
       MongoCollection<Document> collection = database.getCollection(table);
       Document query = new Document("_id", key);
+      
+      if (batchReadSize == 1) {
+	      //long startTime = System.nanoTime();
+	      FindIterable<Document> findIterable = collection.find(query);
+	      //long consumingTime = System.nanoTime() - startTime;
+	      //System.out.println("collection.find timeuse(ns) " + consumingTime);
 
-      //long startTime = System.nanoTime();
-      FindIterable<Document> findIterable = collection.find(query);
-      //long consumingTime = System.nanoTime() - startTime;
-      //System.out.println("collection.find timeuse(ns) " + consumingTime);
+	      if (fields != null) {
+		      Document projection = new Document();
+		      for (String field : fields) {
+			      projection.put(field, INCLUDE);
+		      }
+		      findIterable.projection(projection);
+	      }
 
-      if (fields != null) {
-        Document projection = new Document();
-        for (String field : fields) {
-          projection.put(field, INCLUDE);
-        }
-        findIterable.projection(projection);
+	      Document queryResult = findIterable.first();
+
+	      if (queryResult != null) {
+		      fillMap(result, queryResult);
+	      }
+	      return queryResult != null ? Status.OK : Status.NOT_FOUND;
+      } else {
+      	     keynums++;
+	     bulkReads.add(key);
+	      if (keynums == batchReadSize) {
+		      whereQuery.put("_id", new BasicDBObject("$in", bulkReads));
+		      FindIterable<Document> findIterable = collection.find(whereQuery);
+		      keynums = 0;
+		      bulkReads.clear();
+		      whereQuery.clear();	
+	      	      return Status.OK;
+	      } else {
+		      return OptionsSupport.BATCHED_OK;
+	      }
       }
-
-      Document queryResult = findIterable.first();
-
-      if (queryResult != null) {
-        fillMap(result, queryResult);
-      }
-      return queryResult != null ? Status.OK : Status.NOT_FOUND;
     } catch (Exception e) {
       System.err.println(e.toString());
       return Status.ERROR;
@@ -419,24 +443,45 @@ public class MongoDbClient extends DB {
       Document query = new Document("_id", key);
 
       //long startTime = System.nanoTime();
-      FindIterable<Document> findIterable = collection.find(query);
-      //long consumingTime = System.nanoTime() - startTime;
-      //System.out.println("collection.find timeuse(ns) " + consumingTime);
+      if (batchReadSize == 1) {
+	      FindIterable<Document> findIterable = collection.find(query);
+	      //long consumingTime = System.nanoTime() - startTime;
+	      //System.out.println("collection.find timeuse(ns) " + consumingTime);
 
-      if (fields != null) {
-        Document projection = new Document();
-        for (String field : fields) {
-          projection.put(field, INCLUDE);
-        }
-        findIterable.projection(projection);
+	      if (fields != null) {
+		      Document projection = new Document();
+		      for (String field : fields) {
+			      projection.put(field, INCLUDE);
+		      }
+		      findIterable.projection(projection);
+	      }
+
+	      Document queryResult = findIterable.first();
+
+	      if (queryResult != null) {
+		      fillMapstringvalue(result, queryResult);
+	      }
+	      return queryResult != null ? Status.OK : Status.NOT_FOUND;
+      } else {
+      	     keynums++;
+	     bulkReads.add(key);
+	      if (keynums == batchReadSize) {
+		      int num = 0;
+		      whereQuery.put("_id", new BasicDBObject("$in", bulkReads));
+		      FindIterable<Document> findIterable = collection.find(whereQuery);
+		      for(Document doc : findIterable) {
+			      if (doc != null) {
+				      fillMapstringvalue(result, doc);
+			      }
+		      }
+		      keynums = 0;
+		      bulkReads.clear();
+		      whereQuery.clear();	
+	      	      return Status.OK;
+	      } else {
+		      return OptionsSupport.BATCHED_OK;
+	      }
       }
-
-      Document queryResult = findIterable.first();
-
-      if (queryResult != null) {
-        fillMapstringvalue(result, queryResult);
-      }
-      return queryResult != null ? Status.OK : Status.NOT_FOUND;
     } catch (Exception e) {
       System.err.println(e.toString());
       return Status.ERROR;
