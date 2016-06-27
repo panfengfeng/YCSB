@@ -19,6 +19,7 @@ package com.yahoo.ycsb.workloads;
 
 import java.util.Properties;
 import java.io.BufferedReader;  
+import java.io.File;  
 import java.io.FileInputStream;  
 import java.io.FileReader;  
 import java.io.IOException;  
@@ -361,7 +362,7 @@ public class CoreWorkload extends Workload {
 
   int insertionRetryLimit;
   int insertionRetryInterval;
-
+  File file = null;
   BufferedReader br = null;
   public final String filepath = "/datainssd/publicdata/movies/movies_ycsb.txt";
 
@@ -401,10 +402,19 @@ public class CoreWorkload extends Workload {
    */
   @Override
   public void init(Properties p) throws WorkloadException {
-    try { 
-    	br = new BufferedReader(new InputStreamReader(new FileInputStream(filepath)));
+    try {
+    	file = new File(filepath); 
+    	br = new BufferedReader(new InputStreamReader(new FileInputStream(file)));
     } catch(FileNotFoundException fnfe) { 
 	System.out.println("FileNotFound");
+	return;
+    }
+
+    try{
+    	br.mark((int)file.length() + 1);
+    }catch(IOException e){
+	System.out.println("mark error");
+	return;
     } 
 
     table = p.getProperty(TABLENAME_PROPERTY, TABLENAME_PROPERTY_DEFAULT);
@@ -608,6 +618,9 @@ public class CoreWorkload extends Workload {
 					    // System.out.println("result " + fieldkey + " " + data.substring(fieldkey.length()+2));
 					    break;
 				    }
+			    }
+			    if (!br.ready()) {
+				br.reset();
 			    }
 		    } catch (IOException e) {
 			System.out.println("read error");
