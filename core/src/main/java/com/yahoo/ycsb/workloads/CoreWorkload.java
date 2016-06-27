@@ -362,7 +362,7 @@ public class CoreWorkload extends Workload {
 
   int insertionRetryLimit;
   int insertionRetryInterval;
-  File file = null;
+  FileInputStream file = null;
   BufferedReader br = null;
   public final String filepath = "/datainssd/publicdata/movies/movies_ycsb.txt";
 
@@ -403,20 +403,24 @@ public class CoreWorkload extends Workload {
   @Override
   public void init(Properties p) throws WorkloadException {
     try {
+/*
     	file = new File(filepath); 
     	br = new BufferedReader(new InputStreamReader(new FileInputStream(file)));
+*/
+	file = new FileInputStream(filepath);
+    	br = new BufferedReader(new InputStreamReader(file));
     } catch(FileNotFoundException fnfe) { 
 	System.out.println("FileNotFound");
 	return;
     }
-
+/*
     try{
     	br.mark((int)file.length() + 1);
-    }catch(IOException e){
+    } catch(IOException e){
 	System.out.println("mark error");
 	return;
     } 
-
+*/
     table = p.getProperty(TABLENAME_PROPERTY, TABLENAME_PROPERTY_DEFAULT);
 
     fieldcount =
@@ -620,7 +624,9 @@ public class CoreWorkload extends Workload {
 				    }
 			    }
 			    if (!br.ready()) {
-				br.reset();
+				file.getChannel().position(0);
+				br = new BufferedReader(new InputStreamReader(file));
+				// br.reset();
 			    }
 		    } catch (IOException e) {
 			System.out.println("read error");
