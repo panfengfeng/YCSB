@@ -1,4 +1,4 @@
-nohup dstat -tcm --output /datainssd/ycsbtest/cpumemory/TerarkSegDB_movies_uniform_workloadc_iterator_op_mem3g_new_1_1read_thread_1_96_2 2 > nohup.out &
+nohup dstat -tcm --output /datainssd/ycsbtest/cpumemory/TerarkSegDB_movies_uniform_iterator_op_mem3g_new_1_1read_thread_8_1_workloadd_4 2 > nohup.out &
 #
 #echo 3 > /proc/sys/vm/drop_caches
 #
@@ -8,7 +8,7 @@ nohup dstat -tcm --output /datainssd/ycsbtest/cpumemory/TerarkSegDB_movies_unifo
 
 echo 3 > /proc/sys/vm/drop_caches
 
-bin/ycsb run mongodb -s -P workloads/workloadc -threads 1 > /datainssd/ycsbtest/benchmarktest/run_TerarkSegDB_movies_uniform_workloadc_iterator_op_mem3g_new_1_1read_thread_1_96_2
+bin/ycsb run mongodb -s -P workloads/workloadd -threads 8 > /datainssd/ycsbtest/benchmarktest/run_TerarkSegDB_movies_uniform_iterator_op_mem3g_new_1_1read_thread_8_1_workloadd_4
 
 #bin/ycsb run mongodb -s -P workloads/workloadc -threads 1 > /datainssd/ycsbtest/benchmarktest/run_TerarkSegDB_movies_test
 

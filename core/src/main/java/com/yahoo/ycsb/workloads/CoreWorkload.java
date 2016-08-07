@@ -365,6 +365,7 @@ public class CoreWorkload extends Workload {
   FileInputStream file = null;
   BufferedReader br = null;
   public final String filepath = "/datainssd/publicdata/movies/movies_ycsb.txt";
+  //public final String filepath = "/data/publicdata/movies/movies_ycsb.txt";
 
   private Measurements _measurements = Measurements.getMeasurements();
 

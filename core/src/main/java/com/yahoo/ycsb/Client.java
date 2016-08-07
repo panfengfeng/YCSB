@@ -195,6 +195,11 @@ class StatusThread extends Thread
     if (totalops != 0) {
       msg.append(d.format(curthroughput)).append(" current ops/sec; ");
     }
+ 
+    if (totalops != 0) {
+      msg.append(d.format(throughput)).append(" total ops/sec; ");
+    }
+
     if (todoops != 0) {
       msg.append("est completion in ").append(RemainingFormatter.format(estremaining));
     }
@@ -745,7 +750,7 @@ public class Client
     boolean dotransactions=true;
     int threadcount=1;
     int target=0;
-    boolean status=false;
+    boolean status=true;
     String label="";
 
     //parse arguments
