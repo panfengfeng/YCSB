@@ -191,6 +191,8 @@ public class CoreWorkload extends Workload {
   public static final String DATA_INTEGRITY_PROPERTY = "dataintegrity";
   
   public static final String SOURCEFROMSELF_PROPERTY = "sourcefromself";
+  
+  public static final String MOVIE_PROPERTY = "movie";
 
   /**
    * The default value for the dataintegrity property.
@@ -198,6 +200,8 @@ public class CoreWorkload extends Workload {
   public static final String DATA_INTEGRITY_PROPERTY_DEFAULT = "false";
   
   public static final String SOURCEFROMSELF_PROPERTY_DEFAULT = "true";
+  
+  public static final String MOVIE_PROPERTY_DEFAULT = "false";
 
   /**
    * Set to true if want to check correctness of reads. Must also
@@ -206,6 +210,8 @@ public class CoreWorkload extends Workload {
   private boolean dataintegrity;
   
   private boolean sourcefromself;
+  
+  private boolean movie;
 
   /**
    * The name of the property for the proportion of transactions that are reads.
@@ -365,7 +371,6 @@ public class CoreWorkload extends Workload {
   FileInputStream file = null;
   BufferedReader br = null;
   public final String filepath = "/datainssd/publicdata/movies/movies_ycsb.txt";
-  //public final String filepath = "/data/publicdata/movies/movies_ycsb.txt";
 
   private Measurements _measurements = Measurements.getMeasurements();
 
@@ -432,7 +437,7 @@ public class CoreWorkload extends Workload {
     	for (int i = 0; i < fieldcount; i++) {
       		fieldnames.add("field" + i);
    	 }
-    } else {
+    } else if(movie) {
 		fieldnames.add("productproductId");
 		fieldnames.add("reviewuserId");
 		fieldnames.add("reviewprofileName");
@@ -441,6 +446,22 @@ public class CoreWorkload extends Workload {
 		fieldnames.add("reviewtime");
 		fieldnames.add("reviewsummary");
 		fieldnames.add("reviewtext");
+    } else {
+		fieldnames.add("cur_id");
+		fieldnames.add("cur_namespace");
+		fieldnames.add("cur_title");
+		fieldnames.add("cur_text");
+		fieldnames.add("cur_comment");
+		fieldnames.add("cur_user");
+		fieldnames.add("cur_user_text");
+		fieldnames.add("cur_timestamp");
+		fieldnames.add("cur_restrictions");
+		fieldnames.add("cur_counter");
+		fieldnames.add("cur_is_redirect");
+		fieldnames.add("cur_minor_edit");
+		fieldnames.add("cur_random");
+		fieldnames.add("cur_touched");
+		fieldnames.add("inverse_timestamp");
     }
 
     fieldlengthgenerator = CoreWorkload.getFieldLengthGenerator(p);
@@ -480,6 +501,8 @@ public class CoreWorkload extends Workload {
 
     sourcefromself = Boolean.parseBoolean(
         p.getProperty(SOURCEFROMSELF_PROPERTY, SOURCEFROMSELF_PROPERTY_DEFAULT));
+    movie = Boolean.parseBoolean(
+        p.getProperty(MOVIE_PROPERTY, MOVIE_PROPERTY_DEFAULT));
     // Confirm that fieldlengthgenerator returns a constant if data
     // integrity check requested.
     if (dataintegrity && !(p.getProperty(
@@ -613,26 +636,40 @@ public class CoreWorkload extends Workload {
 		    String data = buildDeterministicValue(key, fieldkey);
 		    values.put(fieldkey, data);
 	    }
+    } else if (movie) {
+        for (String fieldkey : fieldnames) {
+            try {
+                while(br.ready()) {
+                    String data = br.readLine();
+                    if(data.startsWith(fieldkey)) {
+                        values.put(fieldkey, data.substring(fieldkey.length()+2));
+                        break;
+                    }
+                }
+                if (!br.ready()) {
+                    file.getChannel().position(0);
+                    br = new BufferedReader(new InputStreamReader(file));
+                }
+            } catch (IOException e) {
+                System.out.println("read error");
+            }
+        }
     } else {
-	    for (String fieldkey : fieldnames) {
-		    try {
-			    while(br.ready()) {
-				    String data = br.readLine();
-				    if(data.startsWith(fieldkey)) {
-					    values.put(fieldkey, data.substring(fieldkey.length()+2));
-					    // System.out.println("result " + fieldkey + " " + data.substring(fieldkey.length()+2));
-					    break;
-				    }
-			    }
-			    if (!br.ready()) {
-				file.getChannel().position(0);
-				br = new BufferedReader(new InputStreamReader(file));
-				// br.reset();
-			    }
-		    } catch (IOException e) {
-			System.out.println("read error");
-		    }
-	    }
+        for (String fieldkey : fieldnames) {
+            try {
+                while(br.ready()) {
+                    String data = br.readLine();
+                    values.put(fieldkey, data);
+                    break;
+                }
+                if (!br.ready()) {
+                    file.getChannel().position(0);
+                    br = new BufferedReader(new InputStreamReader(file));
+                }
+            } catch (IOException e) {
+                System.out.println("read error");
+            }
+        }
     }
     return values;
   }
